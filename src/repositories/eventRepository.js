@@ -35,14 +35,14 @@ async function findAll(filter, sort, limit) {
         .toArray();
 }
 
-async function update(id, data, currentStatus) {
+async function update(id, data, conditions = {}) {
     const collection = await getCollection();
 
     return collection.findOneAndUpdate(
         {
             _id: new ObjectId(id),
             isDeleted: false,
-            status: currentStatus
+            ...conditions
         },
         {
             $set: {
@@ -57,22 +57,9 @@ async function update(id, data, currentStatus) {
     );
 }
 
-async function categoryExists(id) {
-    const db = await connectDB();
-
-    const category = await db.collection('categories')
-        .findOne({
-            _id: new ObjectId(id),
-            isDeleted: { $ne: true }
-        });
-
-    return !!category;
-}
-
 module.exports = {
     create,
     findById,
     findAll,
-    update,
-    categoryExists
+    update
 };

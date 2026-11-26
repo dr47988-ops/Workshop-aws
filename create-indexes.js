@@ -1,5 +1,7 @@
 const { connectDB } = require('./src/config/mongodb');
 
+const { nameCollation } = require('./src/repositories/categoryRepository');
+
 async function createIndexes() {
     try {
         const db = await connectDB();
@@ -26,11 +28,18 @@ async function createIndexes() {
             date: 1
         });
 
+        const categories = db.collection('categories');
+        await categories.createIndex(
+            { name: 1 },
+            { unique: true, collation: nameCollation }
+        );
+
         console.log('Indices creados correctamente');
 
         const indexes = await events.indexes();
 
         console.log(indexes);
+        console.log(await categories.indexes());
 
         process.exit(0);
 

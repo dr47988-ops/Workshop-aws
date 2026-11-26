@@ -1,5 +1,6 @@
 const { ObjectId } = require('mongodb');
 const repository = require('../repositories/eventRepository');
+const categories = require('../repositories/categoryRepository');
 
 const { AppError } = require('../utils/errors');
 
@@ -13,7 +14,7 @@ const {
 async function createEvent(body) {
     const data = validate(eventSchema, body);
 
-    if (!await repository.categoryExists(data.categoryId)) {
+    if (!await categories.exists(data.categoryId)) {
         throw new AppError('La categoría no existe', 404);
     }
 
@@ -73,7 +74,7 @@ async function updateEvent(id, body) {
     }
 
     if (data.categoryId) {
-        if (!await repository.categoryExists(data.categoryId)) {
+        if (!await categories.exists(data.categoryId)) {
             throw new AppError('La categoría no existe', 404);
         }
 
@@ -87,7 +88,7 @@ async function updateEvent(id, body) {
     const updated = await repository.update(
         id,
         data,
-        event.status
+        { status: event.status }
     );
 
     if (!updated) {
@@ -98,6 +99,67 @@ async function updateEvent(id, body) {
     }
 
     return updated;
+}
+
+async function deleteEvent(id) {
+    validate(objectIdSchema, id);
+    const deleted = await repository.update(id, {
+        isDeleted: true,
+        deletedAt: new Date()
+    });
+
+    if (!deleted) {
+        throw new AppError('Evento no encontrado', 404);
+    }
+
+    return deleted;
+}
+
+async function publishEvent(id) {
+    const event = await getEvent(id);
+
+    if (event.status !== 'DRAFT') {
+        throw new AppError('Solo se puede publicar un evento en borrador', 409);
+    }
+
+    const { title, description, location, categoryId, date, ticketTypes } = event;
+    validate(eventSchema, {
+        title,
+        description,
+        location,
+        categoryId: categoryId?.toString(),
+        date: date instanceof Date ? date.toJSON() : date,
+        ticketTypes
+    });
+
+    if (new Date(date) <= new Date()) {
+        throw new AppError('La fecha del evento debe estar en el futuro', 409);
+    }
+
+    if (!await categories.exists(categoryId)) {
+        throw new AppError('La categoría no existe', 404);
+    }
+
+    // Comprueba los campos validados antes de publicar para evitar carreras con las ediciones.
+    const now = new Date();
+    const published = await repository.update(id, {
+        status: 'PUBLISHED',
+        publishedAt: now
+    }, {
+        status: 'DRAFT',
+        title,
+        description,
+        location,
+        categoryId,
+        date: { $eq: date, $gt: now },
+        ticketTypes
+    });
+
+    if (!published) {
+        throw new AppError('El evento cambió o su fecha venció durante la publicación', 409);
+    }
+
+    return published;
 }
 
 async function listEvents(query = {}) {
@@ -197,5 +259,7 @@ module.exports = {
     createEvent,
     getEvent,
     updateEvent,
+    deleteEvent,
+    publishEvent,
     listEvents
 };
