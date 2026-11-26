@@ -1,0 +1,63 @@
+// Colecciones en MongoDB: users, categories, events, reservations
+// Última reservación guardada (queda CANCELLED tras la prueba):
+{
+  "_id": "6b0797114e6bbd2846ef2a32",
+  "userId": "6b0796fda23619742fe2c83b",
+  "eventId": "6b0797114e6bbd2846ef2a31",
+  "items": [
+    {
+      "ticketTypeId": "6b0797114e6bbd2846ef2a2f",
+      "name": "General",
+      "quantity": 2,
+      "unitPrice": 10000,
+      "subtotal": 20000
+    },
+    {
+      "ticketTypeId": "6b0797114e6bbd2846ef2a30",
+      "name": "VIP",
+      "quantity": 1,
+      "unitPrice": 25000,
+      "subtotal": 25000
+    }
+  ],
+  "subtotal": 45000,
+  "taxRate": 0.13,
+  "tax": 5850,
+  "total": 50850,
+  "status": "CANCELLED",
+  "expiresAt": "2026-11-26T02:33:57.656Z",
+  "createdAt": "2026-11-26T02:18:57.656Z",
+  "updatedAt": "2026-11-26T02:18:57.747Z",
+  "cancelledAt": "2026-11-26T02:18:57.747Z"
+}
+// Evento asociado (eliminado lógicamente, el documento se conserva):
+{
+  "_id": "6b0797114e6bbd2846ef2a31",
+  "title": "Concierto Workshop (editado)",
+  "description": "Evento de prueba desde Postman",
+  "categoryId": "6b0797114e6bbd2846ef2a2d",
+  "location": "San Carlos, Alajuela",
+  "date": "2026-12-03T02:18:57.528Z",
+  "ticketTypes": [
+    {
+      "_id": "6b0797114e6bbd2846ef2a2f",
+      "name": "General",
+      "price": 10000,
+      "capacity": 5,
+      "available": 5
+    },
+    {
+      "_id": "6b0797114e6bbd2846ef2a30",
+      "name": "VIP",
+      "price": 25000,
+      "capacity": 2,
+      "available": 2
+    }
+  ],
+  "status": "PUBLISHED",
+  "isDeleted": true,
+  "createdAt": "2026-11-26T02:18:57.535Z",
+  "updatedAt": "2026-11-26T02:18:57.848Z",
+  "publishedAt": "2026-11-26T02:18:57.635Z",
+  "deletedAt": "2026-11-26T02:18:57.848Z"
+}

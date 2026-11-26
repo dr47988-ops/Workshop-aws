@@ -56,3 +56,18 @@ module.exports = {
     updateEventSchema,
     validate
 };
+const reservationSchema = z.object({
+    items: z.array(
+        z.object({
+            ticketTypeId: objectIdSchema,
+            quantity: z.number(
+                'La cantidad debe ser un número'
+            ).int('La cantidad debe ser un entero')
+                .min(1, 'La cantidad mínima es 1')
+                .max(10, 'La cantidad máxima por tipo de entrada es 10')
+        }).strict()
+    ).min(1, 'Debe reservar al menos una entrada')
+        .max(10, 'Demasiados tipos de entrada en una reservación')
+}).strict();
+
+module.exports.reservationSchema = reservationSchema;

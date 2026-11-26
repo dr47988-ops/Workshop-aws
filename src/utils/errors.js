@@ -15,13 +15,36 @@ function response(statusCode, data) {
     };
 }
 
-function handleError(error) {
-    console.error(error.message);
+// Convierte los errores que no son AppError en una respuesta con sentido.
+function normalizeError(error) {
+    if (error.statusCode) {
+        return error;
+    }
 
-    return response(error.statusCode || 500, {
+    if (error.code === 11000) {
+        return new AppError('Ya existe un registro con esos datos', 409);
+    }
+
+    if (error.name === 'BSONError') {
+        return new AppError('ID inválido', 400);
+    }
+
+    return error;
+}
+
+function handleError(error) {
+    const normalized = normalizeError(error);
+
+    if (normalized.statusCode) {
+        console.error(normalized.message);
+    } else {
+        console.error(error);
+    }
+
+    return response(normalized.statusCode || 500, {
         success: false,
-        message: error.statusCode
-            ? error.message
+        message: normalized.statusCode
+            ? normalized.message
             : 'Error interno del servidor'
     });
 }

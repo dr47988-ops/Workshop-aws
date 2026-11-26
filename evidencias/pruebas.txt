@@ -1,0 +1,15 @@
+### node test-persona2.js
+Categorías: POST 201, duplicado 409, JSON inválido 400, GET 200 y registro persistido.
+Publicación: referencia ObjectId verificada, fecha vencida 409, PATCH 200 y PUBLISHED persistido.
+Eliminación lógica: DELETE 200, documento conservado, excluido del listado y GET 404.
+### node test-persona3.js
+Validaciones: sin usuario 401, evento en borrador 409, datos inválidos 400, no existe 404.
+Reservación: 201, subtotales, impuesto 13%, total, vence a los 15 min e inventario descontado.
+Inventario: pedido mayor al disponible 409 y descuentos parciales revertidos.
+Concurrencia: 20 intentos simultáneos por 3 entradas -> 3 aceptados, 17 rechazados, sin sobreventa.
+Cancelación: 200, inventario devuelto y segunda cancelación 409 sin devolver doble.
+Expiración: reservación vencida pasa a EXPIRED, libera entradas una vez y no se puede cancelar.
+### node test-persona4.js
+Usuarios: sin header, ID inválido y usuario inexistente 401; correo duplicado rechazado por el índice.
+GET /users/me/reservations: solo las del usuario, filtro por estado y paginación por cursor.
+Errores: cursor o ID inválido 400 y JSON mal formado 400, con el mismo formato de respuesta.

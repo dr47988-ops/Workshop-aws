@@ -1,10 +1,12 @@
 {
   "name": "workshop-serverless-events",
   "version": "1.0.0",
-  "description": "",
+  "description": "API REST serverless de eventos y reservaciones (AWS Lambda, API Gateway y MongoDB)",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "indexes": "node create-indexes.js",
+    "seed": "node seed-users.js",
+    "test": "node test-persona2.js && node test-persona3.js && node test-persona4.js"
   },
   "keywords": [],
   "author": "",
