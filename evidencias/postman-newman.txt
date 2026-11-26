@@ -1,0 +1,123 @@
+newman
+
+Workshop Serverless - Eventos y Reservaciones
+
+❏ 1. Categorías
+↳ POST /categories
+  POST http://localhost:3000/categories [201 Created, 404B, 20ms]
+  ✓  Responde 201
+
+↳ POST /categories (nombre duplicado)
+  POST http://localhost:3000/categories [409 Conflict, 238B, 4ms]
+  ✓  Responde 409
+
+↳ GET /categories
+  GET http://localhost:3000/categories [200 OK, 827B, 3ms]
+  ✓  Responde 200
+  ✓  Incluye la categoría creada
+
+❏ 2. Eventos
+↳ POST /events
+  POST http://localhost:3000/events [201 Created, 761B, 4ms]
+  ✓  Responde 201
+  ✓  Nace en DRAFT
+
+↳ GET /events
+  GET http://localhost:3000/events?limit=5&order=desc [200 OK, 779B, 4ms]
+  ✓  Responde 200
+  ✓  Trae paginación
+
+↳ GET /events (búsqueda y estado)
+  GET http://localhost:3000/events?search=Concierto&status=DRAFT [200 OK, 780B, 3ms]
+  ✓  Responde 200
+
+↳ GET /events/{id}
+  GET http://localhost:3000/events/6b0797114e6bbd2846ef2a31 [200 OK, 716B, 3ms]
+  ✓  Responde 200
+
+↳ PATCH /events/{id}
+  PATCH http://localhost:3000/events/6b0797114e6bbd2846ef2a31 [200 OK, 771B, 4ms]
+  ✓  Responde 200
+  ✓  Título actualizado
+
+↳ PATCH /events/{id}/publish
+  PATCH http://localhost:3000/events/6b0797114e6bbd2846ef2a31/publish [200 OK, 771B, 6ms]
+  ✓  Responde 200
+  ✓  Queda PUBLISHED
+
+❏ 3. Reservaciones
+↳ POST /events/{id}/reservations
+  POST http://localhost:3000/events/6b0797114e6bbd2846ef2a31/reservations [201 Created, 762B, 7ms]
+  ✓  Responde 201
+  ✓  Subtotal, impuesto y total
+  ✓  Queda PENDING
+
+↳ POST reservación sin entradas suficientes
+  POST http://localhost:3000/events/6b0797114e6bbd2846ef2a31/reservations [409 Conflict, 245B, 4ms]
+  ✓  Responde 409
+
+↳ POST reservación sin header x-user-id
+  POST http://localhost:3000/events/6b0797114e6bbd2846ef2a31/reservations [401 Unauthorized, 228B, 2ms]
+  ✓  Responde 401
+
+↳ GET /reservations/{id}
+  GET http://localhost:3000/reservations/6b0797114e6bbd2846ef2a32 [200 OK, 711B, 4ms]
+  ✓  Responde 200
+
+↳ GET /events/{id} (inventario descontado)
+  GET http://localhost:3000/events/6b0797114e6bbd2846ef2a31 [200 OK, 771B, 3ms]
+  ✓  Responde 200
+  ✓  General 3 y VIP 1 disponibles
+
+↳ PATCH /reservations/{id}/cancel
+  PATCH http://localhost:3000/reservations/6b0797114e6bbd2846ef2a32/cancel [200 OK, 803B, 7ms]
+  ✓  Responde 200
+  ✓  Queda CANCELLED
+
+↳ PATCH cancelar de nuevo
+  PATCH http://localhost:3000/reservations/6b0797114e6bbd2846ef2a32/cancel [409 Conflict, 231B, 6ms]
+  ✓  Responde 409
+
+↳ GET /events/{id} (inventario devuelto)
+  GET http://localhost:3000/events/6b0797114e6bbd2846ef2a31 [200 OK, 771B, 4ms]
+  ✓  Responde 200
+  ✓  Inventario completo otra vez
+
+❏ 4. Usuario
+↳ GET /users/me/reservations
+  GET http://localhost:3000/users/me/reservations?limit=10 [200 OK, 1.39kB, 5ms]
+  ✓  Responde 200
+  ✓  Incluye la reservación cancelada
+
+↳ GET /users/me/reservations?status=CANCELLED
+  GET http://localhost:3000/users/me/reservations?status=CANCELLED [200 OK, 1.39kB, 5ms]
+  ✓  Responde 200
+
+❏ 5. Limpieza
+↳ DELETE /events/{id}
+  DELETE http://localhost:3000/events/6b0797114e6bbd2846ef2a31 [200 OK, 809B, 3ms]
+  ✓  Responde 200
+
+↳ GET /events/{id} (eliminado)
+  GET http://localhost:3000/events/6b0797114e6bbd2846ef2a31 [404 Not Found, 220B, 2ms]
+  ✓  Responde 404
+
+┌─────────────────────────┬─────────────────┬─────────────────┐
+│                         │        executed │          failed │
+├─────────────────────────┼─────────────────┼─────────────────┤
+│              iterations │               1 │               0 │
+├─────────────────────────┼─────────────────┼─────────────────┤
+│                requests │              21 │               0 │
+├─────────────────────────┼─────────────────┼─────────────────┤
+│            test-scripts │              21 │               0 │
+├─────────────────────────┼─────────────────┼─────────────────┤
+│      prerequest-scripts │              23 │               0 │
+├─────────────────────────┼─────────────────┼─────────────────┤
+│              assertions │              32 │               0 │
+├─────────────────────────┴─────────────────┴─────────────────┤
+│ total run duration: 451ms                                   │
+├─────────────────────────────────────────────────────────────┤
+│ total data received: 10.91kB (approx)                       │
+├─────────────────────────────────────────────────────────────┤
+│ average response time: 4ms [min: 2ms, max: 20ms, s.d.: 3ms] │
+└─────────────────────────────────────────────────────────────┘

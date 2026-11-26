@@ -1,0 +1,310 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Workshop - API REST serverless de eventos y reservaciones (Lambda + API Gateway HTTP API + MongoDB)
+
+Parameters:
+  MongoDbUri:
+    Type: String
+    NoEcho: true
+    Description: Cadena de conexión de MongoDB Atlas
+  DbName:
+    Type: String
+    Default: eventsdb
+  TaxRate:
+    Type: String
+    Default: '0.13'
+  ReservationTtlMinutes:
+    Type: String
+    Default: '15'
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 15
+    MemorySize: 256
+    Environment:
+      Variables:
+        MONGODB_URI: !Ref MongoDbUri
+        DB_NAME: !Ref DbName
+        TAX_RATE: !Ref TaxRate
+        RESERVATION_TTL_MINUTES: !Ref ReservationTtlMinutes
+
+Resources:
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+          - POST
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - content-type
+          - x-user-id
+
+  ListEventsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/listEvents.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-listEvents'
+      CodeUri: .
+      Handler: listEvents.handler
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /events
+
+  GetEventFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/getEvent.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-getEvent'
+      CodeUri: .
+      Handler: getEvent.handler
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /events/{id}
+
+  CreateEventFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/createEvent.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-createEvent'
+      CodeUri: .
+      Handler: createEvent.handler
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /events
+
+  UpdateEventFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/updateEvent.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-updateEvent'
+      CodeUri: .
+      Handler: updateEvent.handler
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: PATCH
+            Path: /events/{id}
+
+  DeleteEventFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/deleteEvent.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-deleteEvent'
+      CodeUri: .
+      Handler: deleteEvent.handler
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: DELETE
+            Path: /events/{id}
+
+  PublishEventFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/publishEvent.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-publishEvent'
+      CodeUri: .
+      Handler: publishEvent.handler
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: PATCH
+            Path: /events/{id}/publish
+
+  ListCategoriesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/listCategories.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-listCategories'
+      CodeUri: .
+      Handler: listCategories.handler
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /categories
+
+  CreateCategoryFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/createCategory.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-createCategory'
+      CodeUri: .
+      Handler: createCategory.handler
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /categories
+
+  CreateReservationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/createReservation.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-createReservation'
+      CodeUri: .
+      Handler: createReservation.handler
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /events/{id}/reservations
+
+  GetReservationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/getReservation.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-getReservation'
+      CodeUri: .
+      Handler: getReservation.handler
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /reservations/{id}
+
+  CancelReservationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/cancelReservation.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-cancelReservation'
+      CodeUri: .
+      Handler: cancelReservation.handler
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: PATCH
+            Path: /reservations/{id}/cancel
+
+  GetMyReservationsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/getMyReservations.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-getMyReservations'
+      CodeUri: .
+      Handler: getMyReservations.handler
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /users/me/reservations
+
+  ExpireReservationsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/expireReservations.js
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-expireReservations'
+      CodeUri: .
+      Handler: expireReservations.handler
+      Events:
+        EveryMinute:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+
+Outputs:
+  ApiUrl:
+    Description: URL base del API Gateway (usar como baseUrl en Postman)
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
