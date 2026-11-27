@@ -2,8 +2,7 @@ const repository = require('../repositories/userRepository');
 const { AppError } = require('../utils/errors');
 const { objectIdSchema } = require('../utils/validations');
 
-// No hay login en el workshop: el usuario se identifica con el header
-// x-user-id. Aquí se valida que exista en la colección users.
+// Compatibilidad con pruebas locales anteriores.
 async function requireUser(userId) {
     if (!userId) {
         throw new AppError('Falta el header x-user-id', 401);
@@ -22,4 +21,22 @@ async function requireUser(userId) {
     return user;
 }
 
-module.exports = { requireUser };
+const { getHeader } = require('../utils/http');
+const { authenticate, requireRole } = require('../handlers/auth');
+
+function useLegacyIdentity(event) {
+    return !getHeader(event, 'authorization') && process.env.WORKSHOP_LOCAL_LEGACY === 'true';
+}
+
+async function requireReservationUser(event) {
+    if (useLegacyIdentity(event)) return requireUser(getHeader(event, 'x-user-id'));
+    return (await authenticate(event)).user;
+}
+
+async function requireEventMutationAdmin(event) {
+    if (useLegacyIdentity(event)) return;
+    const { user } = await authenticate(event);
+    requireRole(user, 'ADMIN');
+}
+
+module.exports = { requireUser, requireReservationUser, requireEventMutationAdmin };

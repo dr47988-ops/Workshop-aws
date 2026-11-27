@@ -1,10 +1,10 @@
 const { getReservation } = require('../services/reservationService');
-const { requireUser } = require('../services/userService');
+const { requireReservationUser } = require('../services/userService');
 const { response } = require('../utils/errors');
-const { getHeader, wrap } = require('../utils/http');
+const { wrap } = require('../utils/http');
 
 exports.handler = wrap(async (event) => {
-    const user = await requireUser(getHeader(event, 'x-user-id'));
+    const user = await requireReservationUser(event);
 
     const result = await getReservation(
         event.pathParameters?.id,

@@ -1,3 +1,5 @@
+process.env.WORKSHOP_LOCAL_LEGACY = 'true';
+
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { ObjectId } = require('mongodb');
@@ -66,11 +68,16 @@ async function test() {
         assert.deepEqual(empty.reservations, []);
 
         const ids = [];
-        for (let i = 0; i < 3; i++) ids.push((await reserve(idA)).data._id);
+        for (let i = 0; i < 3; i++) {
+            const id = (await reserve(idA)).data._id;
+            ids.push(id);
+            if (i < 2) {
+                await call('cancelReservation', 200, {
+                    headers: { 'x-user-id': idA }, pathParameters: { id }
+                });
+            }
+        }
         await reserve(idB);
-        await call('cancelReservation', 200, {
-            headers: { 'x-user-id': idA }, pathParameters: { id: ids[0] }
-        });
 
         // Solo aparecen las del usuario, de la más nueva a la más vieja
         const all = await call('getMyReservations', 200, { headers: { 'x-user-id': idA } });
@@ -82,7 +89,7 @@ async function test() {
         const cancelled = await call('getMyReservations', 200, {
             headers: { 'x-user-id': idA }, queryStringParameters: { status: 'CANCELLED' }
         });
-        assert.deepEqual(cancelled.reservations.map(item => item._id), [ids[0]]);
+        assert.deepEqual(cancelled.reservations.map(item => item._id), [ids[1], ids[0]]);
         await call('getMyReservations', 400, {
             headers: { 'x-user-id': idA }, queryStringParameters: { status: 'OTRO' }
         });

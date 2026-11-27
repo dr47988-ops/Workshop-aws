@@ -29,4 +29,10 @@ async function connectDB() {
     return client.db(process.env.DB_NAME || 'eventsdb');
 }
 
-module.exports = { connectDB };
+async function withTransaction(callback) {
+    await connectDB();
+    const client = await clientPromise;
+    return client.withSession(session => session.withTransaction(() => callback(session)));
+}
+
+module.exports = { connectDB, withTransaction };

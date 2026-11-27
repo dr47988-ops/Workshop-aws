@@ -1,5 +1,6 @@
 const { connectDB } = require('./src/config/mongodb');
 
+const { registerIndexes } = require('./src/repositories/notificationRepository');
 const { nameCollation } = require('./src/repositories/categoryRepository');
 
 async function createIndexes() {
@@ -48,6 +49,13 @@ async function createIndexes() {
 
         // Búsqueda de reservaciones pendientes que ya vencieron
         await reservations.createIndex({ status: 1, expiresAt: 1 });
+
+        await reservations.createIndex({ eventId: 1, userId: 1, status: 1 });
+        await reservations.createIndex(
+            { userId: 1, idempotencyKey: 1 },
+            { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } }
+        );
+        await registerIndexes(db);
 
         console.log('Indices creados correctamente');
 

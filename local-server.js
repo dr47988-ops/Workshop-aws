@@ -20,9 +20,20 @@ const routes = [
     ['POST', '/events/{id}/reservations', 'createReservation'],
     ['GET', '/reservations/{id}', 'getReservation'],
     ['PATCH', '/reservations/{id}/cancel', 'cancelReservation'],
-    ['GET', '/users/me/reservations', 'getMyReservations']
+    ['GET', '/users/me/reservations', 'getMyReservations'],
+    ['PATCH', '/reservations/{id}/confirm', 'confirmReservation'],
+    ['POST', '/reservations/expire', 'expireReservations'],
+    ['POST', '/events/{id}/reminders', 'notifications'],
+    ['GET', '/events/{id}/reminders', 'notifications'],
+    ['PATCH', '/reminders/{id}', 'notifications'],
+    ['DELETE', '/reminders/{id}', 'notifications'],
+    ['POST', '/events/{id}/announcements', 'notifications'],
+    ['GET', '/events/{id}/announcements', 'notifications'],
+    ['POST', '/notifications/process', 'notifications'],
+    ['GET', '/users/me/notifications', 'notifications']
 ].map(([method, path, name]) => ({
     method,
+    path,
     name,
     regex: new RegExp('^' + path.replace('{id}', '([^/]+)') + '$'),
     handler: require(`./src/handlers/${name}`).handler
@@ -48,7 +59,7 @@ const server = http.createServer(async (req, res) => {
 
     const match = url.pathname.match(route.regex);
     const result = await route.handler({
-        routeKey: `${req.method} ${url.pathname}`,
+        routeKey: `${req.method} ${route.path}`,
         headers: req.headers,
         pathParameters: match[1] ? { id: match[1] } : undefined,
         queryStringParameters: Object.fromEntries(url.searchParams),

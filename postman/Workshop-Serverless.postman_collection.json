@@ -184,6 +184,69 @@
       ]
     },
     {
+      "name": "Sesiones para los integrantes 2 y 3",
+      "item": [
+        {
+          "name": "Iniciar sesion de participante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set('participantAccess', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{authEmail}}\",\n  \"password\": \"{{authPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Iniciar sesion de administrador",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set('adminAccess', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "1. Categorías",
       "item": [
         {
@@ -475,6 +538,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
               }
             ],
             "body": {
@@ -529,48 +596,6 @@
       "name": "3. Reservaciones",
       "item": [
         {
-          "name": "POST /events/{id}/reservations",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
-                  "const r = pm.response.json().data;",
-                  "pm.test('Subtotal, impuesto y total', () => { pm.expect(r.subtotal).to.eql(45000); pm.expect(r.tax).to.eql(5850); pm.expect(r.total).to.eql(50850); });",
-                  "pm.test('Queda PENDING', () => pm.expect(r.status).to.eql('PENDING'));",
-                  "pm.collectionVariables.set('reservationId', r._id);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"ticketTypeId\": \"{{ticketTypeId}}\",\n      \"quantity\": 2\n    },\n    {\n      \"ticketTypeId\": \"{{ticketTypeVipId}}\",\n      \"quantity\": 1\n    }\n  ]\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/events/{{eventId}}/reservations",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "events",
-                "{{eventId}}",
-                "reservations"
-              ]
-            }
-          }
-        },
-        {
           "name": "POST reservación sin entradas suficientes",
           "event": [
             {
@@ -589,6 +614,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{participantAccess}}"
               }
             ],
             "body": {
@@ -609,7 +638,112 @@
           }
         },
         {
-          "name": "POST reservación sin header x-user-id",
+          "name": "POST /events/{id}/reservations",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('bookingKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "const r = pm.response.json().data;",
+                  "pm.test('Subtotal, impuesto y total', () => { pm.expect(r.subtotal).to.eql(45000); pm.expect(r.tax).to.eql(5850); pm.expect(r.total).to.eql(50850); });",
+                  "pm.test('Queda PENDING', () => pm.expect(r.status).to.eql('PENDING'));",
+                  "pm.collectionVariables.set('reservationId', r._id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{participantAccess}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{bookingKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"ticketTypeId\": \"{{ticketTypeId}}\",\n      \"quantity\": 2\n    },\n    {\n      \"ticketTypeId\": \"{{ticketTypeVipId}}\",\n      \"quantity\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/reservations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "reservations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST repetir creacion con Idempotency-Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201 y mismo ID', () => { pm.response.to.have.status(201); pm.expect(pm.response.json().data._id).to.eql(pm.collectionVariables.get('reservationId')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{participantAccess}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{bookingKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"ticketTypeId\": \"{{ticketTypeId}}\",\n      \"quantity\": 2\n    },\n    {\n      \"ticketTypeId\": \"{{ticketTypeVipId}}\",\n      \"quantity\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/reservations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "reservations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST reservacion sin token",
           "event": [
             {
               "listen": "test",
@@ -627,11 +761,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "x-user-id",
-                "value": "",
-                "disabled": false
               }
             ],
             "body": {
@@ -666,7 +795,12 @@
           ],
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{participantAccess}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/reservations/{{reservationId}}",
               "host": [
@@ -710,6 +844,254 @@
           }
         },
         {
+          "name": "Confirmar reservacion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('CONFIRMED', () => pm.expect(pm.response.json().data.status).to.eql('CONFIRMED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/reservations/{{reservationId}}/confirm",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{participantAccess}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Integrante 2 - Automatizacion y notificaciones",
+          "item": [
+            {
+              "name": "Crear recordatorio",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                      "if (pm.response.code < 300) pm.collectionVariables.set('reminderId', pm.response.json().data._id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/events/{{eventId}}/reminders",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminAccess}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"minutesBefore\": 30,\n  \"message\": \"Recordatorio del evento\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Listar recordatorios",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/events/{{eventId}}/reminders",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminAccess}}"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Editar recordatorio",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/reminders/{{reminderId}}",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminAccess}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"minutesBefore\": 60\n}"
+                }
+              }
+            },
+            {
+              "name": "Cancelar recordatorio",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "DELETE",
+                "url": "{{baseUrl}}/reminders/{{reminderId}}",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminAccess}}"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Crear anuncio",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 201', () => pm.response.to.have.status(201));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/events/{{eventId}}/announcements",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminAccess}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"message\": \"Bienvenidos\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Listar anuncios",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/events/{{eventId}}/announcements",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{participantAccess}}"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Procesar notificaciones pendientes",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/notifications/process",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminAccess}}"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Consultar historial",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                      "pm.test('Entrega del anuncio registrada', () => pm.expect(pm.response.json().data.some(n => n.type === 'ANNOUNCEMENT' && n.eventId === pm.collectionVariables.get('eventId'))).to.be.true);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/users/me/notifications",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{participantAccess}}"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "PATCH /reservations/{id}/cancel",
           "event": [
             {
@@ -725,7 +1107,12 @@
           ],
           "request": {
             "method": "PATCH",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{participantAccess}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/reservations/{{reservationId}}/cancel",
               "host": [
@@ -754,7 +1141,12 @@
           ],
           "request": {
             "method": "PATCH",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{participantAccess}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/reservations/{{reservationId}}/cancel",
               "host": [
@@ -797,6 +1189,30 @@
               ]
             }
           }
+        },
+        {
+          "name": "Procesar reservaciones vencidas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/reservations/expire",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              }
+            ]
+          }
         }
       ]
     },
@@ -819,7 +1235,12 @@
           ],
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{participantAccess}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/users/me/reservations?limit=10",
               "host": [
@@ -854,7 +1275,12 @@
           ],
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{participantAccess}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/users/me/reservations?status=CANCELLED",
               "host": [
@@ -894,7 +1320,12 @@
           ],
           "request": {
             "method": "DELETE",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/events/{{eventId}}",
               "host": [
@@ -944,10 +1375,6 @@
       "value": "http://localhost:3000"
     },
     {
-      "key": "userId",
-      "value": ""
-    },
-    {
       "key": "categoryId",
       "value": ""
     },
@@ -974,17 +1401,14 @@
     {
       "key": "futureDate",
       "value": ""
-    }
-  ],
-  "event": [
+    },
     {
-      "listen": "prerequest",
-      "script": {
-        "type": "text/javascript",
-        "exec": [
-          "if (!pm.request.headers.has('x-user-id')) { pm.request.headers.add({ key: 'x-user-id', value: pm.variables.get('userId') }); }"
-        ]
-      }
+      "key": "adminEmail",
+      "value": ""
+    },
+    {
+      "key": "adminPassword",
+      "value": ""
     }
   ]
 }

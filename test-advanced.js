@@ -1,3 +1,5 @@
+process.env.WORKSHOP_LOCAL_LEGACY = 'true';
+
 const assert = require('node:assert/strict');
 const create = require('./src/handlers/createEvent');
 const list = require('./src/handlers/listEvents');

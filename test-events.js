@@ -1,3 +1,5 @@
+process.env.WORKSHOP_LOCAL_LEGACY = 'true';
+
 const { connectDB } = require('./src/config/mongodb');
 
 const createEvent = require('./src/handlers/createEvent');

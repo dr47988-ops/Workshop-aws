@@ -10,6 +10,6 @@ Inicia `node local-server.js`. En Postman, usa `http://localhost:3000` como `bas
 - Refresh y logout reciben `refreshToken`. Refresh lo rota en forma atómica. Logout revoca toda esa sesión, incluidos sus access tokens.
 - El access token dura hasta 15 minutos y la sesión hasta siete días. La caducidad se valida antes de usar la sesión, independientemente de la limpieza TTL de MongoDB.
 
-Los usuarios de demostración existentes no tienen contraseña. Las rutas del Entregable 1 conservan su contrato anterior. Antes de exponer operaciones del Entregable 2 que gestionen otros recursos, integra los controles de rol y propiedad en sus handlers.
+Los usuarios de demostración existentes no tienen contraseña. Las rutas de reservaciones, notificaciones y edición o eliminación de eventos usan el token de acceso según los permisos descritos en [README.md](README.md).
 
 En AWS quedan pendientes `sam build`, la provisión segura de los parámetros `JwtAccessSecret` y `JwtRefreshSecret`, el despliegue y las pruebas de la HTTP API. MongoDB debe permitir al usuario de la aplicación acceder a `users` y `authSessions` y crear sus índices.

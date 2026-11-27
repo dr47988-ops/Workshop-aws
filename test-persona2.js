@@ -1,3 +1,5 @@
+process.env.WORKSHOP_LOCAL_LEGACY = 'true';
+
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { ObjectId } = require('mongodb');

@@ -6,7 +6,7 @@
   "scripts": {
     "indexes": "node create-indexes.js",
     "seed": "node seed-users.js",
-    "test": "node test-persona2.js && node test-persona3.js && node test-persona4.js"
+    "test": "node test-persona2.js && node test-notifications.js && node test-persona3.js && node test-persona4.js"
   },
   "keywords": [],
   "author": "",

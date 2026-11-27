@@ -1,0 +1,17 @@
+Integrantes 2 y 3 | Verificación local con MongoDB 8.3 (replica set)
+
+npm run indexes
+Se crearon los índices de tareas pendientes, historial e idempotencia.
+
+npm test
+- Recordatorios: creación, listado, edición, cancelación y reprogramación al cambiar la fecha.
+- Notificaciones: anuncios, actualizaciones y cancelaciones. Dos procesadores concurrentes registraron una entrega por tarea y destinatario.
+- Reservaciones: confirmación, cancelación, historial, idempotencia concurrente y rechazo de una segunda reservación activa.
+- Rollback: al fallar el descuento del segundo tipo de entrada, el inventario del primero se conserva.
+- Expiración: dos procesadores concurrentes liberaron el inventario una sola vez.
+- Prueba de sobreventa: 10 compradores simultáneos para 5 entradas, 5 respuestas 201 y 5 respuestas 409. Inventario final: 0.
+
+Newman con la colección Workshop Serverless y el servidor HTTP local
+40 solicitudes y 53 aserciones. Cero fallos.
+
+La verificación se ejecutó en local. La compilación de SAM y el despliegue en AWS quedan pendientes.

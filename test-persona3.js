@@ -1,3 +1,5 @@
+process.env.WORKSHOP_LOCAL_LEGACY = 'true';
+
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { ObjectId } = require('mongodb');
@@ -14,6 +16,7 @@ const handlers = {
     publishEvent: require('./src/handlers/publishEvent').handler,
     createReservation: require('./src/handlers/createReservation').handler,
     getReservation: require('./src/handlers/getReservation').handler,
+    confirmReservation: require('./src/handlers/confirmReservation').handler,
     cancelReservation: require('./src/handlers/cancelReservation').handler
 };
 
@@ -31,6 +34,11 @@ async function test() {
         const reservations = db.collection('reservations');
         await db.collection('categories').createIndex(
             { name: 1 }, { unique: true, collation: nameCollation }
+        );
+
+        await reservations.createIndex(
+            { userId: 1, idempotencyKey: 1 },
+            { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } }
         );
 
         const userA = (await db.collection('users').insertOne({
@@ -65,8 +73,8 @@ async function test() {
             const doc = await events.findOne({ _id: new ObjectId(eventId) });
             return doc.ticketTypes.map(ticket => ticket.available);
         };
-        const reserve = (user, items, status = 201) => call('createReservation', status, {
-            headers: as(user),
+        const reserve = (user, items, status = 201, key) => call('createReservation', status, {
+            headers: { ...as(user), ...(key && { 'Idempotency-Key': key }) },
             pathParameters: path,
             body: JSON.stringify({ items })
         });
@@ -95,13 +103,20 @@ async function test() {
         console.log('Validaciones: sin usuario 401, evento en borrador 409, datos inválidos 400, no existe 404.');
 
         // Reservación con dos tipos de entrada, subtotales, impuesto y 15 minutos
-        const first = await reserve(userA, [
+        const firstItems = [
             { ticketTypeId: general, quantity: 2 },
             { ticketTypeId: vip, quantity: 1 }
+        ];
+        const [first, repeated] = await Promise.all([
+            reserve(userA, firstItems, 201, 'retry-test'),
+            reserve(userA, [...firstItems].reverse(), 201, 'retry-test')
         ]);
+        assert.deepEqual(repeated, first);
+        await reserve(userA, [{ ticketTypeId: general, quantity: 1 }], 409, 'retry-test');
+        await reserve(userA, firstItems, 409);
         assert.equal(first.status, 'PENDING');
-        assert.equal(first.items[0].subtotal, 20000);
-        assert.equal(first.items[1].subtotal, 25000.5);
+        assert.equal(first.items.find(item => item.ticketTypeId === general).subtotal, 20000);
+        assert.equal(first.items.find(item => item.ticketTypeId === vip).subtotal, 25000.5);
         assert.equal(first.subtotal, 45000.5);
         assert.equal(first.tax, 5850.07);
         assert.equal(first.total, 50850.57);
@@ -130,35 +145,33 @@ async function test() {
         assert.deepEqual(await stock(), [3, 1]);
         console.log('Inventario: pedido mayor al disponible 409 y descuentos parciales revertidos.');
 
-        // Concurrencia: 20 compradores para 3 entradas generales
-        const race = await Promise.all(Array.from({ length: 20 }, () =>
-            handlers.createReservation({
-                headers: as(userB),
-                pathParameters: path,
-                body: JSON.stringify({ items: [{ ticketTypeId: general, quantity: 1 }] })
-            })
-        ));
-        const won = race.filter(result => result.statusCode === 201).length;
-        assert.equal(won, 3);
-        assert.equal(race.filter(result => result.statusCode === 409).length, 17);
-        assert.deepEqual(await stock(), [0, 1]);
-        console.log('Concurrencia: 20 intentos simultáneos por 3 entradas -> 3 aceptados, 17 rechazados, sin sobreventa.');
+        const confirm = (user, status) => call('confirmReservation', status, {
+            headers: as(user), pathParameters: { id: first._id }
+        });
+        await confirm(userB, 404);
+        const confirmed = await confirm(userA, 200);
+        assert.equal(confirmed.status, 'CONFIRMED');
+        assert.deepEqual(await confirm(userA, 200), confirmed);
+        assert.deepEqual(confirmed.history.map(entry => entry.to), ['PENDING', 'CONFIRMED']);
+        assert.deepEqual(await stock(), [3, 1]);
+        console.log('Idempotencia concurrente, prevención de duplicados y confirmación verificadas.');
 
         // Cancelación libera el inventario una sola vez
         const cancelled = await call('cancelReservation', 200, {
             headers: as(userA), pathParameters: { id: first._id }
         });
         assert.equal(cancelled.status, 'CANCELLED');
-        assert.deepEqual(await stock(), [2, 2]);
+        assert.deepEqual(cancelled.history.map(entry => entry.to), ['PENDING', 'CONFIRMED', 'CANCELLED']);
+        assert.deepEqual(await stock(), [5, 2]);
         await call('cancelReservation', 409, {
             headers: as(userA), pathParameters: { id: first._id }
         });
-        assert.deepEqual(await stock(), [2, 2]);
+        assert.deepEqual(await stock(), [5, 2]);
         console.log('Cancelación: 200, inventario devuelto y segunda cancelación 409 sin devolver doble.');
 
         // Expiración: se fuerza el vencimiento de una reservación pendiente
         const pending = await reserve(userA, [{ ticketTypeId: vip, quantity: 2 }]);
-        assert.deepEqual(await stock(), [2, 0]);
+        assert.deepEqual(await stock(), [5, 0]);
         await reservations.updateOne(
             { _id: new ObjectId(pending._id) },
             { $set: { expiresAt: new Date(Date.now() - 1000) } }
@@ -167,21 +180,40 @@ async function test() {
             headers: as(userA), pathParameters: { id: pending._id }
         });
         assert.equal(expired.status, 'EXPIRED');
-        assert.deepEqual(await stock(), [2, 2]);
+        assert.deepEqual(expired.history.map(entry => entry.to), ['PENDING', 'EXPIRED']);
+        assert.deepEqual(await stock(), [5, 2]);
         await call('cancelReservation', 409, {
             headers: as(userA), pathParameters: { id: pending._id }
         });
 
-        // Expiración por lote (lo que hace la función programada)
+        // Expiración por lote con dos procesadores concurrentes
         const another = await reserve(userA, [{ ticketTypeId: vip, quantity: 1 }]);
         await reservations.updateOne(
             { _id: new ObjectId(another._id) },
             { $set: { expiresAt: new Date(Date.now() - 1000) } }
         );
-        assert.equal(await reservationService.expireDueReservations(), 1);
+        const counts = await Promise.all([
+            reservationService.expireDueReservations(),
+            reservationService.expireDueReservations()
+        ]);
+        assert.equal(counts[0] + counts[1], 1);
         assert.equal(await reservationService.expireDueReservations(), 0);
-        assert.deepEqual(await stock(), [2, 2]);
+        assert.deepEqual(await stock(), [5, 2]);
         console.log('Expiración: reservación vencida pasa a EXPIRED, libera entradas una vez y no se puede cancelar.');
+        const buyers = await db.collection('users').insertMany(
+            Array.from({ length: 10 }, (_, index) => ({ name: `Buyer ${index}`, isDeleted: false }))
+        );
+        const race = await Promise.all(Object.values(buyers.insertedIds).map(userId =>
+            handlers.createReservation({
+                headers: as(userId.toString()),
+                pathParameters: path,
+                body: JSON.stringify({ items: [{ ticketTypeId: general, quantity: 1 }] })
+            })
+        ));
+        assert.equal(race.filter(result => result.statusCode === 201).length, 5);
+        assert.equal(race.filter(result => result.statusCode === 409).length, 5);
+        assert.deepEqual(await stock(), [0, 2]);
+        console.log('Concurrencia: 10 intentos para 5 entradas, 5 éxitos y saldo cero.');
     } finally {
         await db.dropDatabase();
     }

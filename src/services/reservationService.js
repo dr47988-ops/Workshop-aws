@@ -1,4 +1,6 @@
 const { ObjectId } = require('mongodb');
+const { withTransaction } = require('../config/mongodb');
+const { createHash } = require('node:crypto');
 const events = require('../repositories/eventRepository');
 const repository = require('../repositories/reservationRepository');
 const { AppError } = require('../utils/errors');
@@ -10,7 +12,7 @@ const {
     validate
 } = require('../utils/validations');
 
-const statuses = ['PENDING', 'CANCELLED', 'EXPIRED'];
+const statuses = ['PENDING', 'CONFIRMED', 'CANCELLED', 'EXPIRED'];
 
 // Los montos se calculan en centavos para evitar errores de decimales.
 const toCents = amount => Math.round(amount * 100);
@@ -59,156 +61,160 @@ function calculateTotals(lines) {
     };
 }
 
-async function releaseInventory(reservation) {
-    for (const line of reservation.items) {
-        await events.releaseTickets(
-            reservation.eventId,
-            line.ticketTypeId,
-            line.quantity
-        );
-    }
-}
-
-async function createReservation(eventId, userId, body) {
+async function createReservation(eventId, userId, body, key) {
     validate(objectIdSchema, eventId);
-    const data = validate(reservationSchema, body);
-
-    const event = await events.findById(eventId);
-
-    if (!event) {
-        throw new AppError('Evento no encontrado', 404);
+    const { items } = validate(reservationSchema, body);
+    if (key !== undefined && (typeof key !== 'string' || !/^[!-~]{1,128}$/.test(key))) {
+        throw new AppError('Idempotency-Key inválida', 400);
     }
 
-    if (event.status !== 'PUBLISHED') {
-        throw new AppError('El evento no está disponible para reservar', 409);
-    }
+    const user = new ObjectId(userId);
+    const id = new ObjectId(eventId);
+    const normalized = items.map(({ ticketTypeId, quantity }) => ({
+        ticketTypeId: ticketTypeId.toLowerCase(), quantity
+    }));
+    const canonical = [...normalized].sort((a, b) => a.ticketTypeId.localeCompare(b.ticketTypeId));
+    const hash = createHash('sha256').update(JSON.stringify([id, canonical])).digest('hex');
+    const scope = key === undefined ? null : { userId: user, idempotencyKey: key };
 
-    if (new Date(event.date) <= new Date()) {
-        throw new AppError('El evento ya pasó', 409);
+    function replay(existing) {
+        if (existing.requestHash !== hash) {
+            throw new AppError('Idempotency-Key ya utilizada para otra solicitud', 409);
+        }
+        return existing.creationResponse;
     }
-
-    const lines = buildLines(event, data.items);
-    const taken = [];
 
     try {
-        for (const line of lines) {
-            const ok = await events.reserveTickets(
-                event._id,
-                line.ticketTypeId,
-                line.quantity
-            );
-
-            if (!ok) {
-                throw new AppError(
-                    `No hay suficientes entradas disponibles de ${line.name}`,
-                    409
-                );
+        return await withTransaction(async session => {
+            if (scope) {
+                const previous = await repository.findOne(scope, session);
+                if (previous) return replay(previous);
+            }
+            const event = await events.findById(id, session);
+            if (!event) throw new AppError('Evento no encontrado', 404);
+            const now = new Date();
+            if (event.status !== 'PUBLISHED' || new Date(event.date) <= now) {
+                throw new AppError('El evento no está disponible para reservar', 409);
             }
 
-            taken.push(line);
-        }
+            const lines = buildLines(event, normalized);
+            const active = await repository.findOne({
+                eventId: id, userId: user,
+                $or: [{ status: 'CONFIRMED' }, { status: 'PENDING', expiresAt: { $gt: now } }]
+            }, session);
+            if (active) throw new AppError('Ya existe una reservación activa para el evento', 409);
 
-        const now = new Date();
+            // La escritura del mismo evento serializa intentos concurrentes.
+            for (const line of lines) {
+                if (!await events.reserveTickets(id, line.ticketTypeId, line.quantity, session)) {
+                    throw new AppError(`No hay suficientes entradas disponibles de ${line.name}`, 409);
+                }
+            }
 
-        return await repository.create({
-            userId: new ObjectId(userId),
-            eventId: event._id,
-            items: lines,
-            ...calculateTotals(lines),
-            status: 'PENDING',
-            expiresAt: new Date(
-                now.getTime() + reservationTtlMinutes() * 60000
-            ),
-            createdAt: now,
-            updatedAt: now
+            const reservation = {
+                _id: new ObjectId(), userId: user, eventId: id, items: lines,
+                ...calculateTotals(lines),
+                status: 'PENDING',
+                expiresAt: new Date(Math.min(
+                    now.getTime() + reservationTtlMinutes() * 60000, new Date(event.date).getTime()
+                )),
+                createdAt: now, updatedAt: now,
+                history: [{ from: null, to: 'PENDING', at: now }]
+            };
+            await repository.create(scope ? {
+                ...reservation, idempotencyKey: key, requestHash: hash,
+                creationResponse: reservation
+            } : reservation, session);
+            return reservation;
         });
     } catch (error) {
-        // Si algo falla a mitad de camino se devuelven las entradas ya tomadas.
-        await releaseInventory({ eventId: event._id, items: taken });
+        if (scope && error.code === 11000) {
+            const previous = await repository.findOne(scope);
+            if (previous) return replay(previous);
+        }
         throw error;
     }
 }
 
-// Marca la reservación como vencida y devuelve las entradas. Solo libera el
-// inventario quien logre el cambio de estado, así nunca se libera dos veces.
-async function expireReservation(reservation) {
-    const expired = await repository.changeStatus(
-        reservation._id,
-        'PENDING',
-        { status: 'EXPIRED', expiredAt: new Date() }
-    );
-
-    if (expired) {
-        await releaseInventory(expired);
-    }
-
-    return expired || reservation;
+function publicReservation({ idempotencyKey, requestHash, creationResponse, ...reservation }) {
+    return reservation;
 }
 
-function isExpired(reservation) {
-    return reservation.status === 'PENDING' &&
-        new Date(reservation.expiresAt) <= new Date();
+async function transition(id, from, to, timestamp, session) {
+    const now = new Date();
+    const conditions = from !== 'PENDING' ? {} : {
+        expiresAt: to === 'EXPIRED' ? { $lte: now } : { $gt: now }
+    };
+    const changed = await repository.changeStatus(
+        id, from, { status: to, [timestamp]: now }, conditions, session
+    );
+    if (changed && to !== 'CONFIRMED') {
+        for (const line of changed.items) {
+            if (!await events.releaseTickets(changed.eventId, line.ticketTypeId, line.quantity, session)) {
+                throw new AppError('No se pudo liberar el inventario', 409);
+            }
+        }
+    }
+    return changed;
+}
+
+function expireReservation(id) {
+    return withTransaction(session => transition(id, 'PENDING', 'EXPIRED', 'expiredAt', session));
 }
 
 async function expireDueReservations(limit = 100, userId) {
     const due = await repository.findExpired(new Date(), limit, userId);
     let count = 0;
-
     for (const reservation of due) {
-        if (await repository.changeStatus(
-            reservation._id,
-            'PENDING',
-            { status: 'EXPIRED', expiredAt: new Date() }
-        )) {
-            await releaseInventory(reservation);
-            count++;
-        }
+        if (await expireReservation(reservation._id)) count++;
     }
-
     return count;
 }
 
 async function getReservation(id, userId) {
     validate(objectIdSchema, id);
-
     let reservation = await repository.findById(id);
-
     if (!reservation || !reservation.userId.equals(userId)) {
         throw new AppError('Reservación no encontrada', 404);
     }
-
-    if (isExpired(reservation)) {
-        reservation = await expireReservation(reservation);
+    if (reservation.status === 'PENDING' && new Date(reservation.expiresAt) <= new Date()) {
+        reservation = await expireReservation(id) || await repository.findById(id);
     }
+    return publicReservation(reservation);
+}
 
-    return reservation;
+async function confirmReservation(id, userId) {
+    const current = await getReservation(id, userId);
+    if (current.status === 'CONFIRMED') return current;
+    if (current.status !== 'PENDING') throw new AppError('La reservación ya no se puede confirmar', 409);
+
+    const confirmed = await withTransaction(async session => {
+        const event = await events.findById(current.eventId, session);
+        if (!event || event.status !== 'PUBLISHED' || new Date(event.date) <= new Date()) {
+            throw new AppError('El evento no está disponible para confirmar', 409);
+        }
+        await events.lockEvent(event._id, session);
+        return transition(id, 'PENDING', 'CONFIRMED', 'confirmedAt', session);
+    });
+    if (confirmed) return publicReservation(confirmed);
+    const latest = await getReservation(id, userId);
+    if (latest.status === 'CONFIRMED') return latest;
+    throw new AppError('La reservación ya no se puede confirmar', 409);
 }
 
 async function cancelReservation(id, userId) {
-    const reservation = await getReservation(id, userId);
-
-    if (reservation.status !== 'PENDING') {
-        throw new AppError(
-            reservation.status === 'EXPIRED'
-                ? 'La reservación ya expiró'
-                : 'La reservación ya fue cancelada',
-            409
-        );
+    const current = await getReservation(id, userId);
+    if (!['PENDING', 'CONFIRMED'].includes(current.status)) {
+        throw new AppError('La reservación ya no se puede cancelar', 409);
     }
-
-    const cancelled = await repository.changeStatus(
-        id,
-        'PENDING',
-        { status: 'CANCELLED', cancelledAt: new Date() }
+    const cancelled = await withTransaction(session =>
+        transition(id, current.status, 'CANCELLED', 'cancelledAt', session)
     );
-
     if (!cancelled) {
+        await getReservation(id, userId);
         throw new AppError('La reservación cambió de estado, intente de nuevo', 409);
     }
-
-    await releaseInventory(cancelled);
-
-    return cancelled;
+    return publicReservation(cancelled);
 }
 
 async function listUserReservations(userId, query = {}) {
@@ -249,7 +255,7 @@ async function listUserReservations(userId, query = {}) {
     }
 
     return {
-        reservations,
+        reservations: reservations.map(publicReservation),
         pagination: {
             limit,
             hasMore,
@@ -264,6 +270,7 @@ module.exports = {
     createReservation,
     getReservation,
     cancelReservation,
+    confirmReservation,
     listUserReservations,
     expireDueReservations
 };

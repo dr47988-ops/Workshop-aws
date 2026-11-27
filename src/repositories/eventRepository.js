@@ -16,13 +16,13 @@ async function create(event) {
     };
 }
 
-async function findById(id) {
+async function findById(id, session) {
     const collection = await getCollection();
 
     return collection.findOne({
         _id: new ObjectId(id),
         isDeleted: false
-    });
+    }, { session });
 }
 
 async function findAll(filter, sort, limit) {
@@ -35,7 +35,7 @@ async function findAll(filter, sort, limit) {
         .toArray();
 }
 
-async function update(id, data, conditions = {}) {
+async function update(id, data, conditions = {}, session) {
     const collection = await getCollection();
 
     return collection.findOneAndUpdate(
@@ -52,7 +52,8 @@ async function update(id, data, conditions = {}) {
         },
         {
             returnDocument: 'after',
-            includeResultMetadata: false
+            includeResultMetadata: false,
+            session
         }
     );
 }
@@ -66,7 +67,7 @@ module.exports = {
 // Descuenta entradas en una sola operación atómica: la condición y el
 // descuento se evalúan juntos en MongoDB, así dos compras al mismo tiempo
 // nunca pueden dejar el inventario en negativo.
-async function reserveTickets(eventId, ticketTypeId, quantity) {
+async function reserveTickets(eventId, ticketTypeId, quantity, session) {
     const collection = await getCollection();
 
     const result = await collection.updateOne(
@@ -74,6 +75,7 @@ async function reserveTickets(eventId, ticketTypeId, quantity) {
             _id: new ObjectId(eventId),
             isDeleted: false,
             status: 'PUBLISHED',
+            date: { $gt: new Date() },
             ticketTypes: {
                 $elemMatch: {
                     _id: new ObjectId(ticketTypeId),
@@ -84,16 +86,17 @@ async function reserveTickets(eventId, ticketTypeId, quantity) {
         {
             $inc: { 'ticketTypes.$.available': -quantity },
             $set: { updatedAt: new Date() }
-        }
+        },
+        { session }
     );
 
     return result.modifiedCount === 1;
 }
 
-async function releaseTickets(eventId, ticketTypeId, quantity) {
+async function releaseTickets(eventId, ticketTypeId, quantity, session) {
     const collection = await getCollection();
 
-    await collection.updateOne(
+    const result = await collection.updateOne(
         {
             _id: new ObjectId(eventId),
             'ticketTypes._id': new ObjectId(ticketTypeId)
@@ -101,9 +104,18 @@ async function releaseTickets(eventId, ticketTypeId, quantity) {
         {
             $inc: { 'ticketTypes.$.available': quantity },
             $set: { updatedAt: new Date() }
-        }
+        },
+        { session }
     );
+    return result.modifiedCount === 1;
 }
 
 module.exports.reserveTickets = reserveTickets;
 module.exports.releaseTickets = releaseTickets;
+
+async function lockEvent(id, session) {
+    const collection = await getCollection();
+    await collection.updateOne({ _id: new ObjectId(id) }, { $inc: { notificationRevision: 1 } }, { session });
+}
+
+module.exports.lockEvent = lockEvent;

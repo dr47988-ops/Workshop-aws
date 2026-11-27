@@ -1,3 +1,5 @@
+const { withTransaction } = require('../config/mongodb');
+const notifications = require('./notificationService');
 const { ObjectId } = require('mongodb');
 const repository = require('../repositories/eventRepository');
 const categories = require('../repositories/categoryRepository');
@@ -56,23 +58,6 @@ async function updateEvent(id, body) {
     validate(objectIdSchema, id);
 
     const data = validate(updateEventSchema, body);
-    const event = await getEvent(id);
-
-    if (['CANCELLED', 'COMPLETED'].includes(event.status)) {
-        throw new AppError(
-            'No se puede modificar un evento finalizado o cancelado',
-            409
-        );
-    }
-
-    if (data.status === 'COMPLETED' &&
-        event.status !== 'PUBLISHED') {
-        throw new AppError(
-            'Solo se puede completar un evento publicado',
-            409
-        );
-    }
-
     if (data.categoryId) {
         if (!await categories.exists(data.categoryId)) {
             throw new AppError('La categoría no existe', 404);
@@ -85,34 +70,46 @@ async function updateEvent(id, body) {
         data.date = new Date(data.date);
     }
 
-    const updated = await repository.update(
-        id,
-        data,
-        { status: event.status }
-    );
+    return withTransaction(async session => {
+        const event = await repository.findById(id, session);
+        if (!event) throw new AppError('Evento no encontrado', 404);
 
-    if (!updated) {
-        throw new AppError(
-            'El evento cambió durante la actualización',
-            409
+        if (['CANCELLED', 'COMPLETED'].includes(event.status)) {
+            throw new AppError(
+                'No se puede modificar un evento finalizado o cancelado',
+                409
+            );
+        }
+
+        if (data.status === 'COMPLETED' &&
+            event.status !== 'PUBLISHED') {
+            throw new AppError(
+                'Solo se puede completar un evento publicado',
+                409
+            );
+        }
+
+        const updated = await repository.update(id, data, {}, session);
+        const changedFields = Object.keys(data).filter(field =>
+            JSON.stringify(event[field]) !== JSON.stringify(updated[field])
         );
-    }
-
-    return updated;
+        await notifications.onEventChange(event, updated, changedFields, session);
+        return updated;
+    });
 }
 
 async function deleteEvent(id) {
     validate(objectIdSchema, id);
-    const deleted = await repository.update(id, {
-        isDeleted: true,
-        deletedAt: new Date()
+    return withTransaction(async session => {
+        const event = await repository.findById(id, session);
+        if (!event) throw new AppError('Evento no encontrado', 404);
+
+        const deleted = await repository.update(id, {
+            isDeleted: true, deletedAt: new Date()
+        }, {}, session);
+        await notifications.onEventChange(event, deleted, ['isDeleted'], session);
+        return deleted;
     });
-
-    if (!deleted) {
-        throw new AppError('Evento no encontrado', 404);
-    }
-
-    return deleted;
 }
 
 async function publishEvent(id) {

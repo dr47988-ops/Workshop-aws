@@ -1,3 +1,4 @@
+const { requireEventMutationAdmin } = require('../services/userService');
 const { updateEvent } = require('../services/eventService');
 
 const {
@@ -8,6 +9,7 @@ const {
 
 exports.handler = async (event) => {
     try {
+        await requireEventMutationAdmin(event);
         const id = event.pathParameters?.id;
 
         let body;

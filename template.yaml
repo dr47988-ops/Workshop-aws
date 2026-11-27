@@ -34,6 +34,8 @@ Globals:
       Variables:
         MONGODB_URI: !Ref MongoDbUri
         DB_NAME: !Ref DbName
+        JWT_ACCESS_SECRET: !Ref JwtAccessSecret
+        JWT_REFRESH_SECRET: !Ref JwtRefreshSecret
         TAX_RATE: !Ref TaxRate
         RESERVATION_TTL_MINUTES: !Ref ReservationTtlMinutes
 
@@ -52,8 +54,8 @@ Resources:
           - OPTIONS
         AllowHeaders:
           - content-type
-          - x-user-id
           - authorization
+          - idempotency-key
 
   AuthFunction:
     Type: AWS::Serverless::Function
@@ -66,10 +68,6 @@ Resources:
     Properties:
       CodeUri: .
       Handler: auth.handler
-      Environment:
-        Variables:
-          JWT_ACCESS_SECRET: !Ref JwtAccessSecret
-          JWT_REFRESH_SECRET: !Ref JwtRefreshSecret
       Events:
         AuthRoute1:
           Type: HttpApi
@@ -361,10 +359,96 @@ Resources:
       CodeUri: .
       Handler: expireReservations.handler
       Events:
+        Api0:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /reservations/expire
         EveryMinute:
           Type: Schedule
           Properties:
             Schedule: rate(1 minute)
+
+  ConfirmReservationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/confirmReservation.js
+    Properties:
+      CodeUri: .
+      Handler: confirmReservation.handler
+      Events:
+        Api0:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: PATCH
+            Path: /reservations/{id}/confirm
+
+  NotificationsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/notifications.js
+    Properties:
+      CodeUri: .
+      Handler: notifications.handler
+      Events:
+        Api0:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /events/{id}/reminders
+        Api1:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /events/{id}/reminders
+        Api2:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: PATCH
+            Path: /reminders/{id}
+        Api3:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: DELETE
+            Path: /reminders/{id}
+        Api4:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /events/{id}/announcements
+        Api5:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /events/{id}/announcements
+        Api6:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /notifications/process
+        Api7:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /users/me/notifications
 
 Outputs:
   ApiUrl:
