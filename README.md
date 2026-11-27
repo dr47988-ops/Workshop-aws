@@ -1,4 +1,6 @@
 # Workshop-aws
+
+[Persona 1 — Autenticación, usuarios y pruebas locales](AUTENTICACION.md)
 workshop
 
 ## Persona 2 — Categorías y administración de eventos

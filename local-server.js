@@ -3,6 +3,12 @@
 const http = require('node:http');
 
 const routes = [
+    ['POST', '/auth/register', 'auth'],
+    ['POST', '/auth/login', 'auth'],
+    ['GET', '/users/me', 'auth'],
+    ['PATCH', '/users/me', 'auth'],
+    ['POST', '/auth/refresh', 'auth'],
+    ['POST', '/auth/logout', 'auth'],
     ['GET', '/events', 'listEvents'],
     ['GET', '/events/{id}', 'getEvent'],
     ['POST', '/events', 'createEvent'],
@@ -42,6 +48,7 @@ const server = http.createServer(async (req, res) => {
 
     const match = url.pathname.match(route.regex);
     const result = await route.handler({
+        routeKey: `${req.method} ${url.pathname}`,
         headers: req.headers,
         pathParameters: match[1] ? { id: match[1] } : undefined,
         queryStringParameters: Object.fromEntries(url.searchParams),

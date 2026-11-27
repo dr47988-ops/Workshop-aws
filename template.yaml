@@ -3,6 +3,14 @@ Transform: AWS::Serverless-2016-10-31
 Description: Workshop - API REST serverless de eventos y reservaciones (Lambda + API Gateway HTTP API + MongoDB)
 
 Parameters:
+  JwtAccessSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+  JwtRefreshSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
   MongoDbUri:
     Type: String
     NoEcho: true
@@ -45,6 +53,60 @@ Resources:
         AllowHeaders:
           - content-type
           - x-user-id
+          - authorization
+
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Target: es2020
+        EntryPoints:
+          - src/handlers/auth.js
+    Properties:
+      CodeUri: .
+      Handler: auth.handler
+      Environment:
+        Variables:
+          JWT_ACCESS_SECRET: !Ref JwtAccessSecret
+          JWT_REFRESH_SECRET: !Ref JwtRefreshSecret
+      Events:
+        AuthRoute1:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /auth/register
+            Method: POST
+        AuthRoute2:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /auth/login
+            Method: POST
+        AuthRoute3:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /users/me
+            Method: GET
+        AuthRoute4:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /users/me
+            Method: PATCH
+        AuthRoute5:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /auth/refresh
+            Method: POST
+        AuthRoute6:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /auth/logout
+            Method: POST
 
   ListEventsFunction:
     Type: AWS::Serverless::Function
